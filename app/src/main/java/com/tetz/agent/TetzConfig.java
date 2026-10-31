@@ -12,6 +12,7 @@ public class TetzConfig {
     private static final String KEY_REGISTERED = "registered";
     private static final String KEY_DEVICE_ID = "device_id";
     private static final String KEY_WORKER_NAME = "worker_name";
+    private static final String KEY_MINER_STATUS = "miner_status";
 
     private static final String DEFAULT_MASTER_URL = "http://192.168.1.104:8000";
 
@@ -53,6 +54,14 @@ public class TetzConfig {
 
     public static void setWorkerName(Context ctx, String name) {
         prefs(ctx).edit().putString(KEY_WORKER_NAME, name).apply();
+    }
+
+    public static String getMinerStatus(Context ctx) {
+        return prefs(ctx).getString(KEY_MINER_STATUS, "");
+    }
+
+    public static void setMinerStatus(Context ctx, String status) {
+        prefs(ctx).edit().putString(KEY_MINER_STATUS, status).apply();
     }
 
     public static String getDeviceId(Context ctx) {
