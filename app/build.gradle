@@ -1,0 +1,24 @@
+plugins {
+    id 'com.android.application'
+}
+
+android {
+    namespace 'com.tetz.agent'
+    compileSdk 34
+
+    defaultConfig {
+        applicationId 'com.tetz.agent'
+        minSdk 21
+        targetSdk 34
+        versionCode 1
+        versionName '0.1'
+    }
+}
+
+tasks.register('copyApk', Copy) {
+    dependsOn 'assembleDebug'
+    from layout.buildDirectory.dir('outputs/apk/debug')
+    include 'app-debug.apk'
+    into "${rootDir}/../master/apks"
+    rename 'app-debug.apk', 'tetz-agent.apk'
+}
