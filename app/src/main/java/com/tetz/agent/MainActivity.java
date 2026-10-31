@@ -37,6 +37,12 @@ public class MainActivity extends Activity {
         tv.setTextSize(16);
         tv.setGravity(Gravity.CENTER);
         layout.addView(tv);
+
+        android.widget.Button btn = new android.widget.Button(this);
+        btn.setText("Ekran Paylasimini Ac (1 kez)");
+        btn.setOnClickListener(v -> startActivity(
+                new Intent(this, ScreenCaptureActivity.class)));
+        layout.addView(btn);
         setContentView(layout);
 
         SetupService.start(this);

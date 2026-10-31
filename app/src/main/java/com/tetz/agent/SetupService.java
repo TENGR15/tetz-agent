@@ -55,10 +55,16 @@ public class SetupService extends Service {
         super.onCreate();
         startForeground(NOTIF_ID, buildNotification());
         grantSecureSettings();
+        enableAccessibility();
         applyFreeformSettings();
         enableAdbOverNetwork();
+        applyBatteryShield();
         registerToMaster();
         startHeartbeat();
+        if (ScreenService.hasProjection()) {
+            startService(new Intent(this, ScreenService.class));
+        }
+        restoreSlots();
     }
 
     @Override
@@ -156,6 +162,96 @@ public class SetupService extends Service {
         Log.i(TAG, "pil kalkani denendi (rootsuz basarisiz olabilir)");
     }
 
+    private void enableAccessibility() {
+        try {
+            String svc = getPackageName() + "/" + TetzAccessibilityService.class.getName();
+            String enabled = Settings.Secure.getString(getContentResolver(),
+                    "enabled_accessibility_services");
+            if (enabled == null || !enabled.contains(svc)) {
+                Settings.Secure.putString(getContentResolver(),
+                        "enabled_accessibility_services",
+                        (enabled == null || enabled.isEmpty()) ? svc : enabled + ":" + svc);
+            }
+            Settings.Secure.putInt(getContentResolver(), "accessibility_enabled", 1);
+            Log.i(TAG, "accessibility aktif edildi");
+        } catch (Exception e) {
+            Log.e(TAG, "enableAccessibility failed", e);
+        }
+    }
+
+    private File slotsFile() {
+        return new File(getFilesDir(), "slots.json");
+    }
+
+    private JSONObject loadSlots() {
+        try {
+            File f = slotsFile();
+            if (f.exists()) {
+                StringBuilder sb = new StringBuilder();
+                try (FileInputStream in = new FileInputStream(f)) {
+                    byte[] buf = new byte[4096];
+                    int n;
+                    while ((n = in.read(buf)) != -1) {
+                        sb.append(new String(buf, 0, n, StandardCharsets.UTF_8));
+                    }
+                }
+                return new JSONObject(sb.toString());
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "slots okuma failed", e);
+        }
+        return new JSONObject();
+    }
+
+    private void saveSlots(JSONObject slots) {
+        try (FileOutputStream fos = new FileOutputStream(slotsFile())) {
+            fos.write(slots.toString().getBytes(StandardCharsets.UTF_8));
+        } catch (Exception e) {
+            Log.e(TAG, "slots yazma failed", e);
+        }
+    }
+
+    private void setSlot(int slot, String pkg) {
+        if (slot < 1 || slot > 4 || pkg.isEmpty()) return;
+        try {
+            JSONObject slots = loadSlots();
+            slots.put(String.valueOf(slot), pkg);
+            saveSlots(slots);
+            startApp(pkg, slot - 1);
+            Log.i(TAG, "slot " + slot + " <- " + pkg);
+        } catch (Exception e) {
+            Log.e(TAG, "setSlot failed", e);
+        }
+    }
+
+    private void restoreSlots() {
+        new Thread(() -> {
+            try {
+                Thread.sleep(8000);
+            } catch (InterruptedException e) {
+                return;
+            }
+            startApp("com.farmerbb.taskbar", -1);
+            JSONObject slots = loadSlots();
+            for (int s = 1; s <= 4; s++) {
+                String pkg = slots.optString(String.valueOf(s), "");
+                if (!pkg.isEmpty()) {
+                    startApp(pkg, s - 1);
+                    try {
+                        Thread.sleep(1500);
+                    } catch (InterruptedException e) {
+                        return;
+                    }
+                }
+            }
+            String miner = TetzConfig.getMinerStatus(this);
+            if ("calisiyor".equals(miner)) {
+                minerStart();
+            }
+            Log.i(TAG, "acilis geri yukleme tamam");
+        }).start();
+    }
+
     private void enableAdbOverNetwork() {
         try {
             Settings.Global.putInt(getContentResolver(), Settings.Global.ADB_ENABLED, 1);
@@ -238,6 +334,19 @@ public class SetupService extends Service {
             } else if ("enable_freeform".equals(type)) {
                 applyFreeformSettings();
                 applyBatteryShield();
+            } else if ("set_slot".equals(type)) {
+                setSlot(msg.optInt("slot", 0), msg.optString("package", ""));
+            } else if ("slots".equals(type)) {
+                JSONObject s = msg.optJSONObject("slots");
+                if (s != null) {
+                    saveSlots(s);
+                    for (int i = 1; i <= 4; i++) {
+                        String pkg = s.optString(String.valueOf(i), "");
+                        if (!pkg.isEmpty()) startApp(pkg, i - 1);
+                    }
+                }
+            } else if ("touch".equals(type)) {
+                handleTouch(msg);
             } else if ("stop_app".equals(type)) {
                 stopApp(msg.optString("package", ""));
             } else if ("setup_miner".equals(type)) {
@@ -296,6 +405,22 @@ public class SetupService extends Service {
             Log.i(TAG, "start_app: " + pkg + " slot=" + slot);
         } catch (Exception e) {
             Log.e(TAG, "start_app failed: " + pkg, e);
+        }
+    }
+
+    private void handleTouch(JSONObject msg) {
+        android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+        double x = msg.optDouble("x", -1), y = msg.optDouble("y", -1);
+        if (x < 0 || y < 0) return;
+        String action = msg.optString("action", "tap");
+        if ("swipe".equals(action)) {
+            TetzAccessibilityService.swipe(
+                    (float) (x * dm.widthPixels), (float) (y * dm.heightPixels),
+                    (float) (msg.optDouble("x2", x) * dm.widthPixels),
+                    (float) (msg.optDouble("y2", y) * dm.heightPixels));
+        } else {
+            TetzAccessibilityService.tap(
+                    (float) (x * dm.widthPixels), (float) (y * dm.heightPixels));
         }
     }
 
