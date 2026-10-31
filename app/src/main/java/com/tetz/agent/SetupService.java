@@ -58,6 +58,13 @@ public class SetupService extends Service {
 
     @Override
     public int onStartCommand(Intent intent, int flags, int startId) {
+        if (intent != null) {
+            String masterUrl = intent.getStringExtra("master_url");
+            if (masterUrl != null && !masterUrl.isEmpty()) {
+                TetzConfig.setMasterUrl(this, masterUrl);
+                Log.i(TAG, "master_url QR'dan alindi: " + masterUrl);
+            }
+        }
         return START_STICKY;
     }
 

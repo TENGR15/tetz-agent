@@ -13,12 +13,18 @@ public class TetzConfig {
     private static final String KEY_DEVICE_ID = "device_id";
     private static final String KEY_WORKER_NAME = "worker_name";
 
+    private static final String DEFAULT_MASTER_URL = "http://192.168.1.104:8000";
+
     private static SharedPreferences prefs(Context ctx) {
         return ctx.getApplicationContext().getSharedPreferences(PREFS, Context.MODE_PRIVATE);
     }
 
     public static String getMasterUrl(Context ctx) {
-        return prefs(ctx).getString(KEY_MASTER_URL, "http://100.95.70.43:8000");
+        String url = prefs(ctx).getString(KEY_MASTER_URL, "");
+        if (url == null || url.isEmpty()) {
+            url = DEFAULT_MASTER_URL;
+        }
+        return url;
     }
 
     public static void setMasterUrl(Context ctx, String url) {
