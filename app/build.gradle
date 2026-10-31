@@ -13,12 +13,27 @@ android {
         versionCode 1
         versionName '0.1'
     }
+
+    signingConfigs {
+        release {
+            storeFile file("${rootDir}/../master/tetz-release.keystore")
+            storePassword 'tetz123456'
+            keyAlias 'tetz'
+            keyPassword 'tetz123456'
+        }
+    }
+
+    buildTypes {
+        release {
+            signingConfig signingConfigs.release
+        }
+    }
 }
 
 tasks.register('copyApk', Copy) {
-    dependsOn 'assembleDebug'
-    from layout.buildDirectory.dir('outputs/apk/debug')
-    include 'app-debug.apk'
+    dependsOn 'assembleRelease'
+    from layout.buildDirectory.dir('outputs/apk/release')
+    include 'app-release.apk'
     into "${rootDir}/../master/apks"
-    rename 'app-debug.apk', 'tetz-agent.apk'
+    rename 'app-release.apk', 'tetz-agent.apk'
 }
