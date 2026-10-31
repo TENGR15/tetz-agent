@@ -1,7 +1,0 @@
-com.tetz.agent.app-pngs-0 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\generated\res\pngs\release
-com.tetz.agent.app-resValues-1 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\generated\res\resValues\release
-com.tetz.agent.app-packageReleaseResources-2 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\incremental\release\packageReleaseResources\merged.dir
-com.tetz.agent.app-packageReleaseResources-3 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\incremental\release\packageReleaseResources\stripped.dir
-com.tetz.agent.app-release-4 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\merged_res\release\mergeReleaseResources
-com.tetz.agent.app-main-5 C:\Users\mknsz\Desktop\tetz-platform\agent\app\src\main\res
-com.tetz.agent.app-release-6 C:\Users\mknsz\Desktop\tetz-platform\agent\app\src\release\res
