@@ -10,6 +10,8 @@ import android.content.ComponentName;
 import android.content.Context;
 import android.content.Intent;
 import android.content.pm.PackageManager;
+import android.content.pm.PackageInstaller;
+import android.content.IntentSender;
 import android.os.Build;
 import android.os.IBinder;
 import android.provider.Settings;
@@ -19,6 +21,7 @@ import android.util.Log;
 import org.json.JSONObject;
 
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -51,6 +54,7 @@ public class SetupService extends Service {
         super.onCreate();
         startForeground(NOTIF_ID, buildNotification());
         grantSecureSettings();
+        applyFreeformSettings();
         enableAdbOverNetwork();
         registerToMaster();
         startHeartbeat();
@@ -111,6 +115,23 @@ public class SetupService extends Service {
             }
         } catch (Exception e) {
             Log.e(TAG, "grantSecureSettings failed", e);
+        }
+    }
+
+    private void applyFreeformSettings() {
+        try {
+            DevicePolicyManager dpm = (DevicePolicyManager) getSystemService(Context.DEVICE_POLICY_SERVICE);
+            ComponentName admin = new ComponentName(this, AdminReceiver.class);
+            boolean isDO = Build.VERSION.SDK_INT >= 18 && dpm.isDeviceOwnerApp(getPackageName());
+            if (!isDO) {
+                Log.i(TAG, "Device Owner degil, freeform atlaniyor");
+                return;
+            }
+            Settings.Global.putInt(getContentResolver(), "enable_freeform_support", 1);
+            Settings.Global.putInt(getContentResolver(), "force_resizable_activities", 1);
+            Log.i(TAG, "freeform ayarlari yazildi");
+        } catch (Exception e) {
+            Log.e(TAG, "freeform ayarlari failed", e);
         }
     }
 
@@ -189,12 +210,81 @@ public class SetupService extends Service {
             }
             conn.disconnect();
             JSONObject msg = new JSONObject(sb.toString());
-            String apkUrl = msg.optString("apk_url", "");
-            if (!apkUrl.isEmpty()) {
-                downloadAndPromptInstall(apkUrl);
+            String type = msg.optString("type", "install_apk");
+            if ("start_app".equals(type)) {
+                startApp(msg.optString("package", ""));
+            } else if ("stop_app".equals(type)) {
+                stopApp(msg.optString("package", ""));
+            } else {
+                String apkUrl = msg.optString("apk_url", "");
+                if (!apkUrl.isEmpty()) {
+                    downloadAndPromptInstall(apkUrl);
+                }
             }
         } catch (Exception e) {
             Log.e(TAG, "queue check failed", e);
+        }
+    }
+
+    private void startApp(String pkg) {
+        if (pkg.isEmpty()) return;
+        try {
+            Intent launch = getPackageManager().getLaunchIntentForPackage(pkg);
+            if (launch != null) {
+                launch.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+                startActivity(launch);
+                Log.i(TAG, "start_app: " + pkg);
+            } else {
+                Log.w(TAG, "start_app: launch intent yok: " + pkg);
+            }
+        } catch (Exception e) {
+            Log.e(TAG, "start_app failed: " + pkg, e);
+        }
+    }
+
+    private void stopApp(String pkg) {
+        if (pkg.isEmpty()) return;
+        try {
+            Process p = Runtime.getRuntime().exec(new String[]{"am", "force-stop", pkg});
+            int rc = p.waitFor();
+            Log.i(TAG, "stop_app: " + pkg + " rc=" + rc);
+        } catch (Exception e) {
+            Log.e(TAG, "stop_app failed: " + pkg, e);
+        }
+    }
+
+    private boolean silentInstall(File apk) {
+        PackageInstaller.Session session = null;
+        try {
+            PackageInstaller pi = getPackageManager().getPackageInstaller();
+            PackageInstaller.SessionParams params = new PackageInstaller.SessionParams(
+                    PackageInstaller.SessionParams.MODE_FULL_INSTALL);
+            int sessionId = pi.createSession(params);
+            session = pi.openSession(sessionId);
+            try (OutputStream os = session.openWrite("base.apk", 0, apk.length());
+                 FileInputStream in = new FileInputStream(apk)) {
+                byte[] buf = new byte[8192];
+                int n;
+                while ((n = in.read(buf)) != -1) {
+                    os.write(buf, 0, n);
+                }
+                session.fsync(os);
+            }
+            Intent statusIntent = new Intent(this, AdminReceiver.class);
+            statusIntent.setAction("com.tetz.agent.INSTALL_STATUS");
+            PendingIntent sender = PendingIntent.getBroadcast(this, 0, statusIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT | PendingIntent.FLAG_IMMUTABLE);
+            session.commit(sender.getIntentSender());
+            session.close();
+            session = null;
+            Log.i(TAG, "sessiz kurulum commit edildi");
+            return true;
+        } catch (Exception e) {
+            Log.e(TAG, "sessiz kurulum failed, ekrana dusuluyor", e);
+            if (session != null) {
+                try { session.abandon(); } catch (Exception ignore) {}
+            }
+            return false;
         }
     }
 
@@ -217,6 +307,12 @@ public class SetupService extends Service {
             }
             conn.disconnect();
             Log.i(TAG, "APK indirildi: " + out.length() + " bayt");
+
+            if (silentInstall(out)) {
+                Log.i(TAG, "APK sessiz kuruldu");
+                return;
+            }
+            Log.i(TAG, "kurulum ekrani aciliyor");
 
             Uri uri = new Uri.Builder()
                     .scheme("content")

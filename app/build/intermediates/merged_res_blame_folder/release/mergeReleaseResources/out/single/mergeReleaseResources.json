@@ -1,0 +1,6 @@
+[
+    {
+        "merged": "com.tetz.agent.app-release-4:/xml_device_admin.xml.flat",
+        "source": "com.tetz.agent.app-main-5:/xml/device_admin.xml"
+    }
+]

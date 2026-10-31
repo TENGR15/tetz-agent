@@ -1,0 +1,7 @@
+com.tetz.agent.app-pngs-0 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\generated\res\pngs\debug
+com.tetz.agent.app-resValues-1 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\generated\res\resValues\debug
+com.tetz.agent.app-packageDebugResources-2 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\incremental\debug\packageDebugResources\merged.dir
+com.tetz.agent.app-packageDebugResources-3 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\incremental\debug\packageDebugResources\stripped.dir
+com.tetz.agent.app-debug-4 C:\Users\mknsz\Desktop\tetz-platform\agent\app\build\intermediates\merged_res\debug\mergeDebugResources
+com.tetz.agent.app-debug-5 C:\Users\mknsz\Desktop\tetz-platform\agent\app\src\debug\res
+com.tetz.agent.app-main-6 C:\Users\mknsz\Desktop\tetz-platform\agent\app\src\main\res

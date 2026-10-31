@@ -1,0 +1,1 @@
+com.tetz.agent:xml/device_admin = 0x7f010000
